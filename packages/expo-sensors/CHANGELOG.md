@@ -10,6 +10,8 @@
 
 ### 💡 Others
 
+- [Android] Remove usage of deprecated internal modules API.
+
 ## 13.0.5 — 2024-05-06
 
 _This version does not introduce any user-facing changes._
