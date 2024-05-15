@@ -110,6 +110,9 @@ export async function createMetroServerAndBundleRequestAsync(
     {
       exp,
       isExporting: true,
+      getMetroBundler() {
+        return server.getBundler().getBundler();
+      },
     }
   );
 
@@ -123,6 +126,7 @@ export async function createMetroServerAndBundleRequestAsync(
   const bundleRequest = {
     ...Server.DEFAULT_BUNDLE_OPTIONS,
     ...getMetroDirectBundleOptionsForExpoConfig(projectRoot, exp, {
+      splitChunks: false,
       mainModuleName: options.entryFile,
       platform: options.platform,
       minify: options.minify,

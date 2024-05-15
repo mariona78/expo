@@ -2,7 +2,8 @@ package expo.modules.updates
 
 import android.os.Bundle
 import com.facebook.react.ReactApplication
-import com.facebook.react.ReactInstanceManager
+import com.facebook.react.bridge.ReactContext
+import com.facebook.react.devsupport.interfaces.DevSupportManager
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.exception.CodedException
 import expo.modules.updates.db.entity.AssetEntity
@@ -15,8 +16,6 @@ import java.lang.ref.WeakReference
 import java.util.Date
 
 interface IUpdatesController {
-  val isEmergencyLaunch: Boolean
-
   /**
    * The path on disk to the launch asset (JS bundle) file for the React Native host to use.
    * Blocks until the configured timeout runs out, or a new update has been downloaded and is ready
@@ -46,7 +45,17 @@ interface IUpdatesController {
    */
   var appContext: WeakReference<AppContext>?
 
-  fun onDidCreateReactInstanceManager(reactInstanceManager: ReactInstanceManager)
+  fun onDidCreateDevSupportManager(devSupportManager: DevSupportManager)
+
+  fun onDidCreateReactInstance(reactContext: ReactContext)
+
+  fun onReactInstanceException(exception: java.lang.Exception)
+
+  /**
+   * Indicates that the controller is in active state.
+   * Currently it's only active for [EnabledUpdatesController].
+   */
+  val isActiveController: Boolean
 
   /**
    * Starts the update process to launch a previously-loaded update and (if configured to do so)
@@ -66,7 +75,7 @@ interface IUpdatesController {
   data class UpdatesModuleConstants(
     val launchedUpdate: UpdateEntity?,
     val embeddedUpdate: UpdateEntity?,
-    val isEmergencyLaunch: Boolean,
+    val emergencyLaunchException: Exception?,
     val isEnabled: Boolean,
     val isUsingEmbeddedAssets: Boolean,
     val runtimeVersion: String?,

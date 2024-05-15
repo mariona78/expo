@@ -39,7 +39,7 @@ export type ResultState = PartialState<NavigationState> & {
 type ParsedRoute = {
   name: string;
   path?: string;
-  params?: Record<string, any> | undefined;
+  params?: Record<string, any>;
 };
 
 export function getUrlWithReactNavigationConcessions(
@@ -65,9 +65,6 @@ export function getUrlWithReactNavigationConcessions(
     // The slashes are at the end, not the beginning
     nonstandardPathname:
       stripBaseUrl(pathname, baseUrl).replace(/^\/+/g, '').replace(/\/+$/g, '') + '/',
-
-    // React Navigation doesn't support hashes, so here
-    inputPathnameWithoutHash: stripBaseUrl(path, baseUrl).replace(/#.*$/, ''),
     url: parsed,
   };
 }
@@ -224,12 +221,12 @@ function sortConfigs(a: RouteConfig, b: RouteConfig): number {
     .split('/')
     // Strip out group names to ensure they don't affect the priority.
     .filter((part) => matchGroupName(part) == null);
-  if (a.screen === 'index') {
+  if (a.screen === 'index' || a.screen.match(/\/index$/)) {
     aParts.push('index');
   }
 
   const bParts = b.pattern.split('/').filter((part) => matchGroupName(part) == null);
-  if (b.screen === 'index') {
+  if (b.screen === 'index' || b.screen.match(/\/index$/)) {
     bParts.push('index');
   }
 
@@ -309,6 +306,7 @@ function sortConfigs(a: RouteConfig, b: RouteConfig): number {
 
 function getStateFromEmptyPathWithConfigs(
   path: string,
+  hash: string,
   configs: RouteConfig[],
   initialRoutes: InitialRouteConfig[]
 ): ResultState | undefined {
@@ -356,7 +354,7 @@ function getStateFromEmptyPathWithConfigs(
     };
   });
 
-  return createNestedStateObject(path, routes, configs, initialRoutes);
+  return createNestedStateObject(path, hash, routes, configs, initialRoutes);
 }
 
 function getStateFromPathWithConfigs(
@@ -376,7 +374,12 @@ function getStateFromPathWithConfigs(
   if (!path.startsWith('/')) cleanPath = cleanPath.slice(1);
 
   if (formattedPaths.nonstandardPathname === '/') {
-    return getStateFromEmptyPathWithConfigs(cleanPath, configs, initialRoutes);
+    return getStateFromEmptyPathWithConfigs(
+      cleanPath,
+      formattedPaths.url.hash.slice(1),
+      configs,
+      initialRoutes
+    );
   }
 
   // We match the whole path against the regex instead of segments
@@ -387,7 +390,13 @@ function getStateFromPathWithConfigs(
     return undefined;
   }
   // This will always be empty if full path matched
-  return createNestedStateObject(cleanPath, routes, configs, initialRoutes);
+  return createNestedStateObject(
+    cleanPath,
+    formattedPaths.url.hash.slice(1),
+    routes,
+    configs,
+    initialRoutes
+  );
 }
 
 const joinPaths = (...paths: string[]): string =>
@@ -677,9 +686,9 @@ const findInitialRoute = (
 // returns state object with values depending on whether
 // it is the end of state and if there is initialRoute for this level
 const createStateObject = (
-  initialRoute: string | undefined,
   route: ParsedRoute,
-  isEmpty: boolean
+  isEmpty: boolean,
+  initialRoute?: string
 ): InitialState => {
   if (isEmpty) {
     if (initialRoute) {
@@ -706,6 +715,7 @@ const createStateObject = (
 
 const createNestedStateObject = (
   path: string,
+  hash: string | undefined,
   routes: ParsedRoute[],
   routeConfigs: RouteConfig[],
   initialRoutes: InitialRouteConfig[]
@@ -717,7 +727,7 @@ const createNestedStateObject = (
 
   parentScreens.push(route.name);
 
-  const state: InitialState = createStateObject(initialRoute, route, routes.length === 0);
+  const state: InitialState = createStateObject(route, routes.length === 0, initialRoute);
 
   if (routes.length > 0) {
     let nestedState = state;
@@ -728,9 +738,9 @@ const createNestedStateObject = (
       const nestedStateIndex = nestedState.index || nestedState.routes.length - 1;
 
       nestedState.routes[nestedStateIndex].state = createStateObject(
-        initialRoute,
         route,
-        routes.length === 0
+        routes.length === 0,
+        initialRoute
       );
 
       if (routes.length > 0) {
@@ -768,6 +778,11 @@ const createNestedStateObject = (
     if (Object.keys(route.params).length === 0) {
       delete route.params;
     }
+  }
+
+  if (hash) {
+    route.params = Object.assign(Object.create(null), route.params) as Record<string, any>;
+    route.params['#'] = hash;
   }
 
   return state;

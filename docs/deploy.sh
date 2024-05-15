@@ -143,6 +143,7 @@ redirects[guides/setup-native-firebase]=guides/using-firebase
 redirects[guides/using-clojurescript]=guides/overview
 redirects[distribution/hosting-your-app]=distribution/publishing-websites
 redirects[guides/web-performance/]=guides/analyzing-bundles
+redirects[accounts/working-together]=accounts/account-types
 
 # Redirects after adding Home to the docs
 redirects[next-steps/additional-resources]=additional-resources
@@ -169,6 +170,7 @@ redirects[get-started/errors]=debugging/errors-and-warnings
 redirects[develop/development-builds/parallel-installation]=build-reference/variants
 redirects[home/develop/user-interface/safe-areas]=develop/user-interface/safe-areas
 redirects[home/develop/development-builds/introduction]=develop/development-builds/introduction
+redirects[guides/assets]=develop/user-interface/assets
 
 # Redirects after Guides organization
 redirects[guides]=guides/overview
@@ -273,6 +275,7 @@ redirects[eas-update/debug-updates]=eas-update/debug
 redirects[eas-update/how-eas-update-works]=eas-update/how-it-works
 redirects[eas-update/migrate-to-eas-update]=eas-update/migrate-from-classic-updates
 redirects[distribution/custom-updates-server]=eas-update/custom-updates-server
+redirects[bare/error-recovery]=eas-update/error-recovery
 
 # Redirects after Expo Router docs reorganization from Home to Guides
 redirects[routing/next-steps]=router/introduction
@@ -324,17 +327,17 @@ redirects[versions/v46.0.0/sdk/permissions.md]=guides/permissions
 redirects[workflow/build/building-on-ci]=build/building-on-ci
 redirects[versions/v50.0.0/sdk/taskmanager]=versions/v50.0.0/sdk/task-manager
 redirects[versions/v49.0.0/sdk/taskmanager]=versions/v49.0.0/sdk/task-manager
-redirects[versions/v48.0.0/sdk/taskmanager]=versions/v48.0.0/sdk/task-manager
+redirects[versions/v48.0.0/sdk/taskmanager]=versions/latest/sdk/task-manager
 redirects[versions/v47.0.0/sdk/taskmanager]=versions/latest/sdk/task-manager
 redirects[versions/v46.0.0/sdk/taskmanager]=versions/latest/sdk/task-manager
 redirects[task-manager]=versions/latest/sdk/task-manager
 redirects[versions/v49.0.0/sdk/filesystem.md]=versions/v49.0.0/sdk/filesystem
-redirects[versions/v48.0.0/sdk/filesystem.md]=versions/v48.0.0/sdk/filesystem
+redirects[versions/v48.0.0/sdk/filesystem.md]=versions/latest/sdk/filesystem
 redirects[versions/v47.0.0/sdk/filesystem.md]=versions/latest/sdk/filesystem
 redirects[versions/v46.0.0/sdk/filesystem.md]=versions/latest/sdk/filesystem
 redirects[versions/latest/sdk/filesystem.md]=versions/latest/sdk/filesystem
 redirects[versions/v48.0.0/sdk]=versions/latest
-redirects[versions/v48.0.0/sdk/config/app]=versions/v48.0.0/config/app
+redirects[versions/v48.0.0/sdk/config/app]=versions/latest/config/app
 redirects[guides/how-expo-works]=faq
 redirects[config/app]=workflow/configuration
 redirects[versions/v50.0.0/sdk]=versions/v50.0.0
@@ -347,6 +350,17 @@ redirects[versions/latest/sdk/overview]=versions/latest
 
 # Deprecated webpack
 redirects[guides/customizing-webpack]=archive/customizing-webpack
+
+# Stop encouraging usage of Expo Go when using native modules
+redirects[bare/using-expo-client]=archive/using-expo-client
+
+# May 2024 home / get started section
+redirects[/overview]=get-started/introduction
+redirects[/get-started/installation]=get-started/create-a-project
+redirects[/get-started/expo-go]=get-started/set-up-your-environment
+
+# Redirect for /learn URL
+redirects[/learn]=tutorial/introduction
 
 echo "::group::[5/6] Add custom redirects"
 for i in "${!redirects[@]}" # iterate over keys

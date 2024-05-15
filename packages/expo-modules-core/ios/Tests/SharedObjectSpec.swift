@@ -89,6 +89,42 @@ final class SharedObjectSpec: ExpoSpec {
         expect(releaseFunction.kind) == .function
       }
     }
+
+    describe("Native object") {
+      // Event emitting requires Xcode 15.0, but we're still using Xcode 14
+      // to run these tests on GitHub Actions due to some performance issues.
+      #if swift(>=5.9)
+      it("emits events") {
+        // Create the shared object
+        let jsObject = try runtime
+          .eval("sharedObject = new expo.modules.SharedObjectModule.SharedObjectExample()")
+          .asObject()
+
+        // Add a listener that adds three arguments
+        try runtime.eval([
+          "result = null",
+          "sharedObject.addListener('test event', (number, string, record) => { result = { number, string, record } })"
+        ])
+
+        // Get the native instance
+        let nativeObject = appContext.sharedObjectRegistry.toNativeObject(jsObject)
+
+        struct EventRecord: Record {
+          @Field var boolean: Bool = true
+        }
+
+        // Emit an event from the native object to JS
+        nativeObject?.emit(event: "test event", arguments: 123, "test", EventRecord())
+
+        // Check the value that is set by the listener
+        let result = try runtime.eval("result").asObject()
+
+        expect(try result.getProperty("number").asInt()) == 123
+        expect(try result.getProperty("string").asString()) == "test"
+        expect(try result.getProperty("record").asObject().getProperty("boolean").asBool()) == true
+      }
+      #endif // swift(>=5.9)
+    }
   }
 }
 

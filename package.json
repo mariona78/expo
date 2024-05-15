@@ -19,7 +19,7 @@
     ]
   },
   "resolutions": {
-    "react-native": "0.73.4",
+    "react-native": "0.74.1",
     "@react-navigation/native": "^6.1.6",
     "@react-navigation/core": "^6.4.9",
     "**/util": "~0.12.4"
@@ -30,5 +30,8 @@
     "node-gyp": "^10.0.1",
     "prettier": "^3.1.1",
     "yarn-deduplicate": "^6.0.2"
+  },
+  "volta": {
+    "node": "20.12.2"
   }
 }

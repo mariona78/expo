@@ -81,41 +81,84 @@ public final class VideoModule: Module {
         let player = AVPlayer()
         let videoPlayer = VideoPlayer(player)
 
-        if let url = source.uri {
-          let asset = AVURLAsset(url: url)
-
-          if let drm = source.drm {
-            try drm.type.assertIsSupported()
-            videoPlayer.contentKeyManager.addContentKeyRequest(videoSource: source, asset: asset)
-          }
-          let playerItem = AVPlayerItem(asset: asset)
-          player.replaceCurrentItem(with: playerItem)
-        }
-
+        try videoPlayer.replaceCurrentItem(with: source)
         player.pause()
         return videoPlayer
       }
 
-      Property("isPlaying") { (player: VideoPlayer) in
-        return player.pointer.timeControlStatus == .playing
+      Property("playing") { player -> Bool in
+        return player.isPlaying
       }
 
-      Property("isMuted") { (player: VideoPlayer) -> Bool in
-        return player.pointer.isMuted
+      Property("muted") { player -> Bool in
+        return player.isMuted
       }
-      .set { (player, isMuted: Bool) in
-        player.pointer.isMuted = isMuted
+      .set { (player, muted: Bool) in
+        player.isMuted = muted
       }
 
-      Property("currentTime") { (player: VideoPlayer) -> Double in
+      Property("currentTime") { player -> Double in
         return player.pointer.currentTime().seconds
       }
 
-      Property("staysActiveInBackground") { (player: VideoPlayer) -> Bool in
+      Property("staysActiveInBackground") { player -> Bool in
         return player.staysActiveInBackground
       }
       .set { (player, staysActive: Bool) in
         player.staysActiveInBackground = staysActive
+      }
+
+      Property("loop") { player -> Bool in
+        return player.loop
+      }
+      .set { (player, loop: Bool) in
+        player.loop = loop
+      }
+
+      Property("currentTime") { player -> Double in
+        return player.pointer.currentTime().seconds
+      }
+      .set { (player, time: Double) in
+        // Only clamp the lower limit, AVPlayer automatically clamps the upper limit.
+        let clampedTime = max(0, time)
+        let timeToSeek = CMTimeMakeWithSeconds(clampedTime, preferredTimescale: .max)
+        player.pointer.seek(to: timeToSeek, toleranceBefore: .zero, toleranceAfter: .zero)
+      }
+
+      Property("duration") { player -> Double in
+        return player.pointer.currentItem?.duration.seconds ?? 0
+      }
+
+      Property("playbackRate") { player -> Float in
+        return player.playbackRate
+      }
+      .set { (player, playbackRate: Float) in
+        player.playbackRate = playbackRate
+      }
+
+      Property("preservesPitch") { player -> Bool in
+        return player.preservesPitch
+      }
+      .set { (player, preservesPitch: Bool) in
+        player.preservesPitch = preservesPitch
+      }
+
+      Property("showNowPlayingNotification") { player -> Bool in
+        return player.showNowPlayingNotification
+      }
+      .set {(player, showNowPlayingNotification: Bool) in
+        player.showNowPlayingNotification = showNowPlayingNotification
+      }
+
+      Property("status") { player -> PlayerStatus in
+        return player.status
+      }
+
+      Property("volume") { player -> Float in
+        return player.volume
+      }
+      .set { (player, volume: Float) in
+        player.volume = volume
       }
 
       Function("play") { player in
@@ -130,28 +173,12 @@ public final class VideoModule: Module {
         var videoSource: VideoSource?
 
         if source.is(String.self), let url: String = source.get() {
-          videoSource = VideoSource(uri: Field(wrappedValue: URL(string: url)))
+          videoSource = VideoSource(uri: URL(string: url))
         } else if source.is(VideoSource.self) {
           videoSource = source.get()
         }
 
-        guard
-          let videoSource = videoSource,
-          let url = videoSource.uri
-        else {
-          player.pointer.replaceCurrentItem(with: nil)
-          return
-        }
-
-        let asset = AVURLAsset(url: url)
-        let playerItem = AVPlayerItem(asset: asset)
-
-        if let drm = videoSource.drm {
-          try drm.type.assertIsSupported()
-          player.contentKeyManager.addContentKeyRequest(videoSource: videoSource, asset: asset)
-        }
-
-        player.pointer.replaceCurrentItem(with: playerItem)
+        try player.replaceCurrentItem(with: videoSource)
       }
 
       Function("seekBy") { (player, seconds: Double) in

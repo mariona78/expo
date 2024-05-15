@@ -18,6 +18,22 @@ if (typeof window !== 'object') {
   globalThis.window.navigator = {};
 }
 
+if (typeof globalThis.__REACT_DEVTOOLS_GLOBAL_HOOK__ === 'undefined') {
+  // RN 0.74 checks for the __REACT_DEVTOOLS_GLOBAL_HOOK__ on startup if getInspectorDataForViewAtPoint is used
+  // React Navigation uses getInspectorDataForViewAtPoint() for improved log box integration in non-production builds
+  globalThis.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
+    isDisabled: true, // Used by `react-test-renderer` https://github.com/facebook/react/blob/113ab9af08c46e8a548a397154f5c9dfeb96ab6a/packages/react-reconciler/src/ReactFiberDevToolsHook.js#L60
+    renderers: {
+      // https://github.com/facebook/react-native/blob/fbbb4246707d85b692c006e0cb3b186a7c9068bc/packages/react-native/Libraries/Inspector/getInspectorDataForViewAtPoint.js#L40
+      values: () => [],
+    },
+    on() {}, // https://github.com/facebook/react-native/blob/fbbb4246707d85b692c006e0cb3b186a7c9068bc/packages/react-native/Libraries/Inspector/getInspectorDataForViewAtPoint.js#L45
+    off() {},
+  };
+  // React is inconsistent with how it checks for the global hook
+  globalThis.window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = globalThis.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+}
+
 const mockImageLoader = {
   configurable: true,
   enumerable: true,
@@ -166,6 +182,19 @@ jest.doMock('react-native/Libraries/LogBox/LogBox', () => ({
   },
 }));
 
+// Mock the `createSnapshotFriendlyRef` to return an ref that can be serialized in snapshots.
+jest.doMock('expo-modules-core/build/Refs', () => ({
+  createSnapshotFriendlyRef: () => {
+    const { createSnapshotFriendlyRef } = jest.requireActual('expo-modules-core/build/Refs');
+    // Fixes: `cannot define property "toJSON", object is not extensible
+    const ref = Object.create(createSnapshotFriendlyRef());
+    Object.defineProperty(ref, 'toJSON', {
+      value: () => '[React.ref]',
+    });
+    return ref;
+  },
+}));
+
 function attemptLookup(moduleName) {
   // hack to get the package name from the module name
   const filePath = stackTrace.getSync().find((line) => line.fileName.includes(moduleName));
@@ -187,6 +216,8 @@ try {
   jest.doMock('expo-modules-core', () => {
     const ExpoModulesCore = jest.requireActual('expo-modules-core');
     const uuid = jest.requireActual('expo-modules-core/build/uuid/uuid.web');
+
+    const { EventEmitter, NativeModule, SharedObject } = globalThis.expo;
 
     // support old hard-coded mocks TODO: remove this
     const { NativeModulesProxy } = ExpoModulesCore;
@@ -213,47 +244,23 @@ try {
     }
     return {
       ...ExpoModulesCore,
-      // Mock EventEmitter since it's commonly constructed in modules and causing warnings.
-      EventEmitter: jest.fn().mockImplementation(() => {
-        const fbemitter = require('fbemitter');
-        const emitter = new fbemitter.EventEmitter();
-        return {
-          addListener: jest.fn().mockImplementation((...args) => {
-            const subscription = emitter.addListener(...args);
-            subscription.__remove = subscription.remove;
-            return subscription;
-          }),
-          removeAllListeners: jest.fn().mockImplementation((...args) => {
-            emitter.removeAllListeners(...args);
-          }),
-          removeSubscription: jest.fn().mockImplementation((subscription) => {
-            // expo-sensor will override the `subscription.remove()` method,
-            // to prevent it from recursive call. we need to call the original remove method.
-            if (typeof subscription.__remove === 'function') {
-              subscription.__remove();
-            }
-          }),
-          emit: jest.fn().mockImplementation((...args) => {
-            emitter.emit(...args);
-          }),
-        };
-      }),
-      requireNativeModule: (name) => {
+
+      // Use web implementations for the common classes written natively
+      EventEmitter,
+      NativeModule,
+      SharedObject,
+
+      requireNativeModule(name) {
         // Support auto-mocking of expo-modules that:
         // 1. have a mock in the `mocks` directory
         // 2. the native module (e.g. ExpoCrypto) name matches the package name (expo-crypto)
-        const nativeModuleMock = attemptLookup(name);
-        if (!nativeModuleMock) {
-          return ExpoModulesCore.requireNativeModule(name);
+        const nativeModuleMock = attemptLookup(name) ?? ExpoModulesCore.requireNativeModule(name);
+        const nativeModule = new NativeModule();
+
+        for (const [key, value] of Object.entries(nativeModuleMock)) {
+          nativeModule[key] = typeof value === 'function' ? jest.fn(value) : value;
         }
-        return Object.fromEntries(
-          Object.entries(nativeModuleMock).map(([k, v]) => {
-            if (typeof v === 'function') {
-              return [k, jest.fn(v)];
-            }
-            return [k, v];
-          })
-        );
+        return nativeModule;
       },
     };
   });
@@ -263,6 +270,9 @@ try {
     throw error;
   }
 }
+
+// Installs web implementations of global things that are normally installed through JSI.
+require('expo-modules-core/build/web/index.web');
 
 // Ensure the environment globals are installed before the first test runs.
 require('expo/build/winter');

@@ -5,11 +5,11 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener2
 import android.hardware.SensorManager
+import android.os.Build
 import android.os.Bundle
 import android.view.Choreographer
 import android.view.Surface
 import android.view.WindowManager
-import expo.modules.core.interfaces.services.EventEmitter
 import expo.modules.core.interfaces.services.UIManager
 import expo.modules.interfaces.sensors.SensorServiceInterface
 import expo.modules.interfaces.sensors.SensorServiceSubscriptionInterface
@@ -23,6 +23,7 @@ import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.sensors.getServiceInterface
+import java.lang.ref.WeakReference
 
 class DeviceMotionModule : Module(), SensorEventListener2 {
   private var lastUpdate = 0L
@@ -38,8 +39,7 @@ class DeviceMotionModule : Module(), SensorEventListener2 {
   private lateinit var uiManager: UIManager
 
   private val currentFrameCallback: ScheduleDispatchFrameCallback = ScheduleDispatchFrameCallback()
-  private val dispatchEventRunnable = DispatchEventRunnable()
-  private lateinit var eventEmitter: EventEmitter
+  private val dispatchEventRunnable = DispatchEventRunnable(WeakReference(this))
 
   override fun definition() = ModuleDefinition {
     Name("ExponentDeviceMotion")
@@ -50,7 +50,6 @@ class DeviceMotionModule : Module(), SensorEventListener2 {
 
     OnCreate {
       uiManager = appContext.legacyModule()!!
-      eventEmitter = appContext.legacyModule()!!
     }
 
     AsyncFunction("setUpdateInterval") { updateInterval: Float ->
@@ -72,7 +71,7 @@ class DeviceMotionModule : Module(), SensorEventListener2 {
     }
 
     // We can't use `OnStopObserving`, because we need access to the promise.
-    AsyncFunction("stopObserving") { promise: Promise ->
+    AsyncFunction("stopObserving") { _: String?, promise: Promise ->
       uiManager.runOnUiQueueThread {
         serviceSubscriptions.forEach { it.stop() }
         currentFrameCallback.stop()
@@ -80,7 +79,7 @@ class DeviceMotionModule : Module(), SensorEventListener2 {
       }
     }
 
-    AsyncFunction("isAvailableAsync") {
+    AsyncFunction<Boolean>("isAvailableAsync") {
       val mSensorManager = appContext.reactContext?.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
         ?: return@AsyncFunction false
       val sensorTypes = arrayListOf(Sensor.TYPE_GYROSCOPE, Sensor.TYPE_ACCELEROMETER, Sensor.TYPE_LINEAR_ACCELERATION, Sensor.TYPE_ROTATION_VECTOR, Sensor.TYPE_GRAVITY)
@@ -161,15 +160,14 @@ class DeviceMotionModule : Module(), SensorEventListener2 {
     }
   }
 
-  private inner class DispatchEventRunnable : Runnable {
+  private inner class DispatchEventRunnable(private val weakReference: WeakReference<DeviceMotionModule>) : Runnable {
     override fun run() {
-      eventEmitter.emit("deviceMotionDidUpdate", eventsToMap())
+      weakReference.get()?.sendEvent("deviceMotionDidUpdate", eventsToMap())
     }
   }
 
   private fun eventsToMap(): Bundle {
     val map = Bundle()
-    var interval = 0.0
     if (accelerationEvent != null) {
       map.putBundle(
         "acceleration",
@@ -177,9 +175,9 @@ class DeviceMotionModule : Module(), SensorEventListener2 {
           putDouble("x", accelerationEvent!!.values[0].toDouble())
           putDouble("y", accelerationEvent!!.values[1].toDouble())
           putDouble("z", accelerationEvent!!.values[2].toDouble())
+          putDouble("timestamp", accelerationEvent!!.timestamp / 1_000_000_000.0)
         }
       )
-      interval = accelerationEvent!!.timestamp.toDouble()
     }
     if (accelerationIncludingGravityEvent != null && gravityEvent != null) {
       map.putBundle(
@@ -188,9 +186,9 @@ class DeviceMotionModule : Module(), SensorEventListener2 {
           putDouble("x", (accelerationIncludingGravityEvent!!.values[0] - 2 * gravityEvent!!.values[0]).toDouble())
           putDouble("y", (accelerationIncludingGravityEvent!!.values[1] - 2 * gravityEvent!!.values[1]).toDouble())
           putDouble("z", (accelerationIncludingGravityEvent!!.values[2] - 2 * gravityEvent!!.values[2]).toDouble())
+          putDouble("timestamp", accelerationIncludingGravityEvent!!.timestamp / 1_000_000_000.0)
         }
       )
-      interval = accelerationIncludingGravityEvent!!.timestamp.toDouble()
     }
     if (rotationRateEvent != null) {
       map.putBundle(
@@ -199,9 +197,9 @@ class DeviceMotionModule : Module(), SensorEventListener2 {
           putDouble("alpha", Math.toDegrees(rotationRateEvent!!.values[0].toDouble()))
           putDouble("beta", Math.toDegrees(rotationRateEvent!!.values[1].toDouble()))
           putDouble("gamma", Math.toDegrees(rotationRateEvent!!.values[2].toDouble()))
+          putDouble("timestamp", rotationEvent!!.timestamp / 1_000_000_000.0)
         }
       )
-      interval = rotationRateEvent!!.timestamp.toDouble()
     }
     if (rotationEvent != null) {
       SensorManager.getRotationMatrixFromVector(rotationMatrix, rotationEvent!!.values)
@@ -212,19 +210,25 @@ class DeviceMotionModule : Module(), SensorEventListener2 {
           putDouble("alpha", (-rotationResult[0]).toDouble())
           putDouble("beta", (-rotationResult[1]).toDouble())
           putDouble("gamma", rotationResult[2].toDouble())
+          putDouble("timestamp", rotationEvent!!.timestamp / 1_000_000_000.0)
         }
       )
-      interval = rotationEvent!!.timestamp.toDouble()
     }
-    map.putDouble("interval", interval)
+    map.putDouble("interval", updateInterval.toDouble())
     map.putInt("orientation", getOrientation())
     return map
   }
 
   private fun getOrientation(): Int {
     val windowManager = appContext.reactContext?.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
-    if (windowManager != null) {
-      when (windowManager.defaultDisplay.rotation) {
+    val rotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      appContext.activityProvider?.currentActivity?.display?.rotation
+    } else {
+      @Suppress("DEPRECATION")
+      windowManager?.defaultDisplay?.rotation
+    }
+    if (rotation != null) {
+      when (rotation) {
         Surface.ROTATION_0 -> return 0
         Surface.ROTATION_90 -> return 90
         Surface.ROTATION_180 -> return 180

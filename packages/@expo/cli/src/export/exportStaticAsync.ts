@@ -7,6 +7,7 @@
 import assert from 'assert';
 import chalk from 'chalk';
 import { RouteNode } from 'expo-router/build/Route';
+import { stripGroupSegmentsFromPath } from 'expo-router/build/matchers';
 import path from 'path';
 import resolveFrom from 'resolve-from';
 import { inspect } from 'util';
@@ -247,6 +248,8 @@ async function exportFromServerAsync(
       outputDir,
       server: devServer,
       manifest: serverManifest,
+      // NOTE(kitten): For now, we always output source maps for API route exports
+      includeSourceMaps: true,
     });
 
     // Add the api routes to the files to export.
@@ -285,6 +288,7 @@ export function getHtmlFiles({
 
       if (leaf != null) {
         let filePath = baseUrl + leaf;
+
         if (leaf === '') {
           filePath =
             baseUrl === ''
@@ -292,6 +296,11 @@ export function getHtmlFiles({
               : baseUrl.endsWith('/')
                 ? baseUrl + 'index'
                 : baseUrl.slice(0, -1);
+        } else if (
+          // If the path is a collection of group segments leading to an index route, append `/index`.
+          stripGroupSegmentsFromPath(filePath) === ''
+        ) {
+          filePath += '/index';
         }
 
         // This should never happen, the type of `string | object` originally comes from React Navigation.
@@ -405,16 +414,18 @@ export function getPathVariations(routePath: string): string[] {
 }
 
 async function exportApiRoutesAsync({
+  includeSourceMaps,
   outputDir,
   server,
   ...props
-}: Pick<Options, 'outputDir'> & {
+}: Pick<Options, 'outputDir' | 'includeSourceMaps'> & {
   server: MetroBundlerDevServer;
   manifest: ExpoRouterServerManifestV1;
 }): Promise<ExportAssetMap> {
   const { manifest, files } = await server.exportExpoRouterApiRoutesAsync({
     outputDir: '_expo/functions',
     prerenderManifest: props.manifest,
+    includeSourceMaps,
   });
 
   Log.log(chalk.bold`Exporting ${files.size} API Routes.`);

@@ -21,10 +21,12 @@ function babelPresetExpo(api, options = {}) {
     let platform = api.caller((caller) => caller?.platform);
     const engine = api.caller((caller) => caller?.engine) ?? 'default';
     const isDev = api.caller(common_1.getIsDev);
+    const isServer = api.caller(common_1.getIsServer);
     const isReactServer = api.caller(common_1.getIsReactServer);
     const isFastRefreshEnabled = api.caller(common_1.getIsFastRefreshEnabled);
     const baseUrl = api.caller(common_1.getBaseUrl);
     const supportsStaticESM = api.caller((caller) => caller?.supportsStaticESM);
+    const isServerEnv = isServer || isReactServer;
     // Unlike `isDev`, this will be `true` when the bundler is explicitly set to `production`,
     // i.e. `false` when testing, development, or used with a bundler that doesn't specify the correct inputs.
     const isProduction = api.caller(common_1.getIsProd);
@@ -35,6 +37,9 @@ function babelPresetExpo(api, options = {}) {
         platform = 'web';
     }
     const platformOptions = getOptions(options, platform);
+    if (platformOptions.useTransformReactJSXExperimental != null) {
+        throw new Error(`babel-preset-expo: The option 'useTransformReactJSXExperimental' has been removed in favor of { jsxRuntime: 'classic' }.`);
+    }
     if (platformOptions.disableImportExportTransform == null) {
         if (platform === 'web') {
             // Only disable import/export transform when Webpack is used because
@@ -58,39 +63,43 @@ function babelPresetExpo(api, options = {}) {
         // @see https://github.com/expo/expo/pull/11960#issuecomment-887796455
         extraPlugins.push([require('@babel/plugin-transform-object-rest-spread'), { loose: false }]);
     }
-    else {
+    else if (!isServerEnv) {
         // This is added back on hermes to ensure the react-jsx-dev plugin (`@babel/preset-react`) works as expected when
         // JSX is used in a function body. This is technically not required in production, but we
         // should retain the same behavior since it's hard to debug the differences.
         extraPlugins.push(require('@babel/plugin-transform-parameters'));
     }
-    if (isProduction && (0, common_1.hasModule)('metro-transform-plugins')) {
-        // Metro applies this plugin too but it does it after the imports have been transformed which breaks
-        // the plugin. Here, we'll apply it before the commonjs transform, in production, to ensure `Platform.OS`
-        // is replaced with a string literal and `__DEV__` is converted to a boolean.
-        // Applying early also means that web can be transformed before the `react-native-web` transform mutates the import.
+    const inlines = {
+        'process.env.EXPO_OS': platform,
+        // 'typeof document': isServerEnv ? 'undefined' : 'object',
+    };
+    // `typeof window` is left in place for native + client environments.
+    const minifyTypeofWindow = (platformOptions.minifyTypeofWindow ?? isServerEnv) || platform === 'web';
+    if (minifyTypeofWindow !== false) {
+        // This nets out slightly faster in development when considering the cost of bundling server dependencies.
+        inlines['typeof window'] = isServerEnv ? 'undefined' : 'object';
+    }
+    if (isProduction) {
+        inlines['process.env.NODE_ENV'] = 'production';
+        inlines['__DEV__'] = false;
+        inlines['Platform.OS'] = platform;
+    }
+    if (process.env.NODE_ENV !== 'test') {
+        inlines['process.env.EXPO_BASE_URL'] = baseUrl;
+    }
+    extraPlugins.push([require('./define-plugin'), inlines]);
+    if (isProduction) {
+        // Metro applies a version of this plugin too but it does it after the Platform modules have been transformed to CJS, this breaks the transform.
+        // Here, we'll apply it before the commonjs transform, in production only, to ensure `Platform.OS` is replaced with a string literal.
         extraPlugins.push([
-            require('metro-transform-plugins/src/inline-plugin.js'),
+            require('./minify-platform-select-plugin'),
             {
-                dev: isDev,
-                inlinePlatform: true,
                 platform,
             },
         ]);
     }
     if (platformOptions.useTransformReactJSXExperimental != null) {
         throw new Error(`babel-preset-expo: The option 'useTransformReactJSXExperimental' has been removed in favor of { jsxRuntime: 'classic' }.`);
-    }
-    // Allow jest tests to redefine the environment variables.
-    if (process.env.NODE_ENV !== 'test') {
-        extraPlugins.push([
-            inline_env_vars_1.expoInlineTransformEnvVars,
-            {
-                // These values should not be prefixed with `EXPO_PUBLIC_`, so we don't
-                // squat user-defined environment variables.
-                EXPO_BASE_URL: baseUrl,
-            },
-        ]);
     }
     // Only apply in non-server, for metro-only, in production environments, when the user hasn't disabled the feature.
     // Webpack uses DefinePlugin for environment variables.
@@ -127,6 +136,8 @@ function babelPresetExpo(api, options = {}) {
             },
         ]);
     }
+    // Use the simpler babel preset for web and server environments (both web and native SSR).
+    const isModernEngine = platform === 'web' || isServerEnv;
     return {
         presets: [
             [
@@ -134,7 +145,7 @@ function babelPresetExpo(api, options = {}) {
                 // specifically use the `@react-native/babel-preset` installed by this package (ex:
                 // `babel-preset-expo/node_modules/`). This way the preset will not change unintentionally.
                 // Reference: https://github.com/expo/expo/pull/4685#discussion_r307143920
-                require('@react-native/babel-preset'),
+                isModernEngine ? require('./web-preset') : require('@react-native/babel-preset'),
                 {
                     // Defaults to undefined, set to `true` to disable `@babel/plugin-transform-flow-strip-types`
                     disableFlowStripTypesTransform: platformOptions.disableFlowStripTypesTransform,

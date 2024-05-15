@@ -3,19 +3,19 @@
 package expo.modules.video
 
 import android.app.Activity
-import android.view.View
 import androidx.media3.common.PlaybackParameters
-import expo.modules.kotlin.apifeatures.EitherType
+import androidx.media3.common.Player.REPEAT_MODE_OFF
+import androidx.media3.common.Player.REPEAT_MODE_ONE
 import com.facebook.react.uimanager.PixelUtil
 import com.facebook.react.uimanager.Spacing
 import com.facebook.react.uimanager.ViewProps
 import com.facebook.yoga.YogaConstants
+import expo.modules.kotlin.apifeatures.EitherType
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.types.Either
 import expo.modules.video.records.VideoSource
-import expo.modules.kotlin.views.ViewDefinitionBuilder
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
@@ -139,26 +139,21 @@ class VideoModule : Module() {
 
     Class(VideoPlayer::class) {
       Constructor { source: VideoSource ->
-        VideoPlayer(activity.applicationContext, appContext, source.toMediaItem())
+        VideoPlayer(activity.applicationContext, appContext, source)
       }
 
-      Property("isPlaying")
+      Property("playing")
         .get { ref: VideoPlayer ->
-          ref.isPlaying
+          ref.playing
         }
 
-      Property("isLoading")
+      Property("muted")
         .get { ref: VideoPlayer ->
-          ref.isLoading
+          ref.muted
         }
-
-      Property("isMuted")
-        .get { ref: VideoPlayer ->
-          ref.isMuted
-        }
-        .set { ref: VideoPlayer, isMuted: Boolean ->
+        .set { ref: VideoPlayer, muted: Boolean ->
           appContext.mainQueue.launch {
-            ref.isMuted = isMuted
+            ref.muted = muted
           }
         }
 
@@ -179,8 +174,54 @@ class VideoModule : Module() {
           //  so we can't update the currentTime in a non-blocking way like the other properties.
           //  Until we think of something better we can temporarily do it this way
           runBlocking(appContext.mainQueue.coroutineContext) {
-            ref.player.currentPosition
+            ref.player.currentPosition / 1000f
           }
+        }
+        .set { ref: VideoPlayer, currentTime: Double ->
+          appContext.mainQueue.launch {
+            ref.player.seekTo((currentTime * 1000).toLong())
+          }
+        }
+
+      Property("duration")
+        .get { ref: VideoPlayer ->
+          ref.duration
+        }
+
+      Property("playbackRate")
+        .get { ref: VideoPlayer ->
+          ref.playbackParameters.speed
+        }
+        .set { ref: VideoPlayer, playbackRate: Float ->
+          appContext.mainQueue.launch {
+            val pitch = if (ref.preservesPitch) 1f else playbackRate
+            ref.playbackParameters = PlaybackParameters(playbackRate, pitch)
+          }
+        }
+
+      Property("preservesPitch")
+        .get { ref: VideoPlayer ->
+          ref.preservesPitch
+        }
+        .set { ref: VideoPlayer, preservesPitch: Boolean ->
+          appContext.mainQueue.launch {
+            ref.preservesPitch = preservesPitch
+          }
+        }
+
+      Property("showNowPlayingNotification")
+        .get { ref: VideoPlayer ->
+          ref.showNowPlayingNotification
+        }
+        .set { ref: VideoPlayer, showNotification: Boolean ->
+          appContext.mainQueue.launch {
+            ref.showNowPlayingNotification = showNotification
+          }
+        }
+
+      Property("status")
+        .get { ref: VideoPlayer ->
+          ref.status
         }
 
       Property("staysActiveInBackground")
@@ -191,15 +232,19 @@ class VideoModule : Module() {
           ref.staysActiveInBackground = staysActive
         }
 
-      Function("getPlaybackSpeed") { ref: VideoPlayer ->
-        ref.playbackParameters.speed
-      }
-
-      Function("setPlaybackSpeed") { ref: VideoPlayer, speed: Float ->
-        appContext.mainQueue.launch {
-          ref.playbackParameters = PlaybackParameters(speed)
+      Property("loop")
+        .get { ref: VideoPlayer ->
+          ref.player.repeatMode == REPEAT_MODE_ONE
         }
-      }
+        .set { ref: VideoPlayer, loop: Boolean ->
+          appContext.mainQueue.launch {
+            ref.player.repeatMode = if (loop) {
+              REPEAT_MODE_ONE
+            } else {
+              REPEAT_MODE_OFF
+            }
+          }
+        }
 
       Function("play") { ref: VideoPlayer ->
         appContext.mainQueue.launch {
@@ -219,9 +264,12 @@ class VideoModule : Module() {
         } else {
           VideoSource(source.get(String::class))
         }
+        val mediaItem = videoSource.toMediaItem()
+        VideoManager.registerVideoSourceToMediaItem(mediaItem, videoSource)
 
         appContext.mainQueue.launch {
-          ref.player.setMediaItem(videoSource.toMediaItem())
+          ref.videoSource = videoSource
+          ref.player.setMediaItem(mediaItem)
         }
       }
 
@@ -247,15 +295,5 @@ class VideoModule : Module() {
     OnActivityEntersBackground {
       VideoManager.onAppBackgrounded()
     }
-  }
-}
-
-@Suppress("FunctionName")
-private inline fun <reified T : View, reified PropType, reified CustomValueType> ViewDefinitionBuilder<T>.PropGroup(
-  vararg props: Pair<String, CustomValueType>,
-  noinline body: (view: T, value: CustomValueType, prop: PropType) -> Unit
-) {
-  for ((name, value) in props) {
-    Prop<T, PropType>(name) { view, prop -> body(view, value, prop) }
   }
 }
