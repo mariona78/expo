@@ -6,6 +6,8 @@
 
 ### 🎉 New features
 
+- Added support for `startObserving` and `stopObserving` on the web.
+
 ### 🐛 Bug fixes
 
 ### 💡 Others
