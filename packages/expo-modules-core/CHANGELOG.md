@@ -6,7 +6,7 @@
 
 ### 🎉 New features
 
-- Added support for `startObserving` and `stopObserving` on the web.
+- Added support for `startObserving` and `stopObserving` on the web. ([#28953](https://github.com/expo/expo/pull/28953) by [@aleqsio](https://github.com/aleqsio))
 
 ### 🐛 Bug fixes
 
